@@ -1,21 +1,27 @@
 import os
 import requests
 from fastapi import FastAPI, Request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler
 
 app = FastAPI()
 
-# ดึงค่า Environment Variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
-BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 
-# สร้าง Instance ของ Telegram Bot
-bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
+def send_telegram_message(chat_id: int, text: str):
+    """ส่งข้อความกลับหา Telegram ผ่าน HTTP API โดยตรง"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Error sending message: {e}")
 
 def get_binance_price(symbol: str) -> float:
-    """ดึงราคา Mark Price ล่าสุดของ Futures จาก Binance"""
+    """ดึงราคา Mark Price ล่าสุดจาก Binance Futures"""
     try:
         url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol}"
         headers = {}
@@ -28,44 +34,41 @@ def get_binance_price(symbol: str) -> float:
         print(f"Error fetching {symbol}: {e}")
     return 0.0
 
-async def start_command(update: Update, context):
-    """คำสั่ง /start"""
-    await update.message.reply_text("👋 บอท My-Spread พร้อมทำงานแล้ว! พิมพ์ /spread เพื่อดูราคา Spread Guard ได้เลยครับ")
-
-async def spread_command(update: Update, context):
-    """คำสั่ง /spread"""
-    # หมายเหตุ: ปรับ Symbol ตามคู่สัญญาจริงที่คุณเทรดบน Binance Futures ได้ครับ
-    bz_price = get_binance_price("BTCUSDT") # ตัวอย่างคู่ทดสอบ หากเป็นน้ำมันใช้ Symbol ตามสัญญา Binance
-    cl_price = get_binance_price("ETHUSDT")
-
-    if bz_price == 0 or cl_price == 0:
-        msg = "⚠️ ไม่สามารถดึงราคาจาก Binance ได้ในขณะนี้ กรุณาเช็ก API Key หรือ Symbol"
-    else:
-        spread = bz_price - cl_price
-        msg = (
-            f"📊 **My Spread Report**\n\n"
-            f"🔹 **Leg A (BZ):** {bz_price:,.2f}\n"
-            f"🔹 **Leg B (CL):** {cl_price:,.2f}\n"
-            f"📈 **Spread Current:** {spread:,.2f}\n\n"
-            f"🛡️ **Status:** Spread Guard Active"
-        )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
 @app.post("/api/webhook")
 async def webhook_handler(request: Request):
     """จุดรับ Webhook จาก Telegram"""
     try:
         data = await request.json()
-        update = Update.de_json(data, bot)
         
-        # จัดการคำสั่ง
-        if update and update.message and update.message.text:
-            text = update.message.text.strip()
+        # ดึง chat_id และข้อความที่ส่งมา
+        message = data.get("message", {})
+        chat_id = message.get("chat", {}).get("id")
+        text = message.get("text", "").strip()
+
+        if chat_id and text:
             if text.startswith("/start"):
-                await start_command(update, None)
+                send_telegram_message(
+                    chat_id, 
+                    "👋 **บอท My-Spread พร้อมทำงานแล้ว!**\nพิมพ์ /spread เพื่อดูราคา Spread Guard ได้เลยครับ"
+                )
             elif text.startswith("/spread"):
-                await spread_command(update, None)
-                
+                # หมายเหตุ: เปลี่ยน BTCUSDT / ETHUSDT เป็น Symbol คู่เทรดของคุณได้ครับ
+                bz_price = get_binance_price("BTCUSDT")
+                cl_price = get_binance_price("ETHUSDT")
+
+                if bz_price == 0 or cl_price == 0:
+                    reply_text = "⚠️ ไม่สามารถดึงราคาจาก Binance ได้ในขณะนี้ กรุณาตรวจสอบ API Key หรือ Symbol"
+                else:
+                    spread = bz_price - cl_price
+                    reply_text = (
+                        f"📊 **My Spread Report**\n\n"
+                        f"🔹 **Leg A (BZ):** {bz_price:,.2f}\n"
+                        f"🔹 **Leg B (CL):** {cl_price:,.2f}\n"
+                        f"📈 **Spread Current:** {spread:,.2f}\n\n"
+                        f"🛡️ **Status:** Spread Guard Active"
+                    )
+                send_telegram_message(chat_id, reply_text)
+
         return {"status": "ok"}
     except Exception as e:
         print(f"Webhook Error: {e}")
@@ -73,4 +76,4 @@ async def webhook_handler(request: Request):
 
 @app.get("/")
 def root():
-    return {"message": "My-Spread-Bot is running alive!"}
+    return {"status": "My-Spread-Bot is active"}
