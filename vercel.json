@@ -1,5 +1,4 @@
 {
-  "devCommand": "uvicorn api.index:app --reload",
   "builds": [
     {
       "src": "api/index.py",
