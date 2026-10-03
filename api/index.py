@@ -9,6 +9,10 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 
 def send_telegram_message(chat_id: int, text: str):
     """ส่งข้อความกลับหา Telegram ผ่าน HTTP API โดยตรง"""
+    if not TELEGRAM_TOKEN:
+        print("Error: TELEGRAM_TOKEN is missing")
+        return
+        
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -36,7 +40,7 @@ def get_binance_price(symbol: str) -> float:
 
 @app.post("/api/webhook")
 async def webhook_handler(request: Request):
-    """จุดรับ Webhook จาก Telegram"""
+    """จุดรับ Webhook จาก Telegram (POST)"""
     try:
         data = await request.json()
         
@@ -52,7 +56,7 @@ async def webhook_handler(request: Request):
                     "👋 **บอท My-Spread พร้อมทำงานแล้ว!**\nพิมพ์ /spread เพื่อดูราคา Spread Guard ได้เลยครับ"
                 )
             elif text.startswith("/spread"):
-                # หมายเหตุ: เปลี่ยน BTCUSDT / ETHUSDT เป็น Symbol คู่เทรดของคุณได้ครับ
+                # เปลี่ยน BTCUSDT / ETHUSDT เป็น Symbol ที่ต้องการได้ครับ
                 bz_price = get_binance_price("BTCUSDT")
                 cl_price = get_binance_price("ETHUSDT")
 
@@ -73,6 +77,11 @@ async def webhook_handler(request: Request):
     except Exception as e:
         print(f"Webhook Error: {e}")
         return {"status": "error", "message": str(e)}
+
+@app.get("/api/webhook")
+def webhook_get():
+    """เพิ่มเพื่อให้สามารถเปิดทดสอบผ่าน Browser ได้โดยไม่ขึ้น Method Not Allowed"""
+    return {"status": "Telegram Webhook Endpoint is Ready!"}
 
 @app.get("/")
 def root():
