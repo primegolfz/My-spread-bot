@@ -8,7 +8,6 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 
 def send_telegram_message(chat_id: int, text: str):
-    """ส่งข้อความกลับหา Telegram ผ่าน HTTP API โดยตรง"""
     if not TELEGRAM_TOKEN:
         print("Error: TELEGRAM_TOKEN is missing")
         return
@@ -25,7 +24,6 @@ def send_telegram_message(chat_id: int, text: str):
         print(f"Error sending message: {e}")
 
 def get_binance_price(symbol: str) -> float:
-    """ดึงราคา Mark Price ล่าสุดจาก Binance Futures"""
     try:
         url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol}"
         headers = {}
@@ -38,13 +36,9 @@ def get_binance_price(symbol: str) -> float:
         print(f"Error fetching {symbol}: {e}")
     return 0.0
 
-@app.post("/api/webhook")
-async def webhook_handler(request: Request):
-    """จุดรับ Webhook จาก Telegram (POST)"""
+async def process_webhook(request: Request):
     try:
         data = await request.json()
-        
-        # ดึง chat_id และข้อความที่ส่งมา
         message = data.get("message", {})
         chat_id = message.get("chat", {}).get("id")
         text = message.get("text", "").strip()
@@ -56,7 +50,6 @@ async def webhook_handler(request: Request):
                     "👋 **บอท My-Spread พร้อมทำงานแล้ว!**\nพิมพ์ /spread เพื่อดูราคา Spread Guard ได้เลยครับ"
                 )
             elif text.startswith("/spread"):
-                # เปลี่ยน BTCUSDT / ETHUSDT เป็น Symbol ที่ต้องการได้ครับ
                 bz_price = get_binance_price("BTCUSDT")
                 cl_price = get_binance_price("ETHUSDT")
 
@@ -78,11 +71,15 @@ async def webhook_handler(request: Request):
         print(f"Webhook Error: {e}")
         return {"status": "error", "message": str(e)}
 
-@app.get("/api/webhook")
-def webhook_get():
-    """เพิ่มเพื่อให้สามารถเปิดทดสอบผ่าน Browser ได้โดยไม่ขึ้น Method Not Allowed"""
-    return {"status": "Telegram Webhook Endpoint is Ready!"}
+# ดักจับ Webhook POST ทั้งแบบมี /api และไม่มี /api
+@app.post("/api/webhook")
+@app.post("/webhook")
+async def webhook_handler(request: Request):
+    return await process_webhook(request)
 
+# ดักจับ GET เช็กสถานะผ่าน เบราว์เซอร์ ทุก Path
 @app.get("/")
+@app.get("/api/webhook")
+@app.get("/webhook")
 def root():
-    return {"status": "My-Spread-Bot is active"}
+    return {"status": "Telegram Webhook Endpoint is Ready!"}
